@@ -1,5 +1,3 @@
-
-
 // Jenkinsfile - Continuous Integration pipeline
 // Phase 2, Task 2: triggered on PRs and pushes; install deps, run tests,
 // code quality checks, build the Docker artifact.
@@ -80,6 +78,37 @@ pipeline {
                     gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
                     docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                     docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Deploy to Dev') {
+            steps {
+                sh '''
+                    gcloud container clusters get-credentials capstone-gke --zone us-central1-a --project project-fd904717-6ef9-4872-ad5
+                    kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
+                    sed "s#task-api:latest#task-api:${IMAGE_TAG}#g" k8s/deployment.yaml | kubectl apply -n dev -f -
+                    kubectl apply -n dev -f k8s/service.yaml
+                    kubectl rollout status deployment/task-api -n dev --timeout=120s
+                '''
+            }
+        }
+
+        stage('Approval for Production') {
+            steps {
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Deploy this build to PRODUCTION?', ok: 'Deploy'
+                }
+            }
+        }
+
+        stage('Deploy to Prod') {
+            steps {
+                sh '''
+                    kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
+                    sed "s#task-api:latest#task-api:${IMAGE_TAG}#g" k8s/deployment.yaml | kubectl apply -n prod -f -
+                    kubectl apply -n prod -f k8s/service.yaml
+                    kubectl rollout status deployment/task-api -n prod --timeout=120s
                 '''
             }
         }
