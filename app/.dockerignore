@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+venv/
+.venv/
+.git/
+.gitignore
+README.md
+requirements-dev.txt
+test_main.py
