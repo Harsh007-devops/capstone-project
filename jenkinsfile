@@ -72,6 +72,173 @@ pipeline {
             }
         }
 
+        stage('Security Scan') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        echo "=== Full vulnerability report (informational, does not fail build) ==="
+                        trivy image --severity CRITICAL,HIGH --format table ${IMAGE_NAME}:${IMAGE_TAG} || true
+
+                        echo ""
+                        echo "=== Fixable CRITICAL check (fails build if any found) ==="
+                        trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 --format table ${IMAGE_NAME}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+
+        stage('Push to Artifact Registry') {
+            steps {
+                sh '''
+                    gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                    docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                '''
+            }
+        }
+
+        stage('Deploy to Dev') {
+            steps {
+                sh '''
+                    gcloud container clusters get-credentials capstone-gke --zone us-central1-a --project project-fd904717-6ef9-4872-ad5
+                    kubectl create namespace dev --dry-run=client -o yaml | kubectl apply -f -
+                    sed "s#task-api:latest#task-api:${IMAGE_TAG}#g" k8s/deployment.yaml | kubectl apply -n dev -f -
+                    kubectl apply -n dev -f k8s/service.yaml
+                    kubectl rollout status deployment/task-api -n dev --timeout=120s
+                '''
+            }
+        }
+
+        stage('Deploy to Test') {
+            steps {
+                sh '''
+                    kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
+                    sed "s#task-api:latest#task-api:${IMAGE_TAG}#g" k8s/deployment.yaml | kubectl apply -n test -f -
+                    kubectl apply -n test -f k8s/service.yaml
+                    kubectl rollout status deployment/task-api -n test --timeout=120s
+                '''
+            }
+        }
+
+        stage('Approval for Production') {
+            steps {
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Deploy this build to PRODUCTION?', ok: 'Deploy'
+                }
+            }
+        }
+
+        stage('Deploy to Prod') {
+            steps {
+                sh '''
+                    kubectl create namespace prod --dry-run=client -o yaml | kubectl apply -f -
+                    sed "s#task-api:latest#task-api:${IMAGE_TAG}#g" k8s/deployment.yaml | kubectl apply -n prod -f -
+                    kubectl apply -n prod -f k8s/service.yaml
+                    kubectl rollout status deployment/task-api -n prod --timeout=120s
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "CI pipeline succeeded - image pushed as ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+        failure {
+            echo "CI pipeline failed - check the stage logs above."
+        }
+    }
+}
+ENDOFFILEcat > jenkinsfile << 'ENDOFFILE'
+// Jenkinsfile - Continuous Integration pipeline
+// Phase 2, Task 2: triggered on PRs and pushes; install deps, run tests,
+// code quality checks, build the Docker artifact.
+
+pipeline {
+    agent any
+
+    environment {
+        APP_DIR          = "app"
+        IMAGE_NAME        = "task-api"
+        REGISTRY          = "us-central1-docker.pkg.dev/project-fd904717-6ef9-4872-ad5/capstone-repo"
+        IMAGE_TAG         = "${env.BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        python3 -m venv venv
+                        . venv/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements-dev.txt
+                    '''
+                }
+            }
+        }
+
+        stage('Run unit tests') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        . venv/bin/activate
+                        pytest -v --junitxml=test-results.xml
+                    '''
+                }
+            }
+            post {
+                always {
+                    junit "${APP_DIR}/test-results.xml"
+                }
+            }
+        }
+
+        stage('Code quality checks') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        . venv/bin/activate
+                        flake8 main.py --max-line-length=100 --exit-zero
+                    '''
+                }
+            }
+        }
+
+        stage('Build artifact (Docker image)') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        stage('Security Scan') {
+            steps {
+                dir("${APP_DIR}") {
+                    sh '''
+                        echo "=== Full vulnerability report (informational, does not fail build) ==="
+                        trivy image --severity CRITICAL,HIGH --format table ${IMAGE_NAME}:${IMAGE_TAG} || true
+
+                        echo ""
+                        echo "=== Fixable CRITICAL check (fails build if any found) ==="
+                        trivy image --severity CRITICAL --ignore-unfixed --exit-code 1 --format table ${IMAGE_NAME}:${IMAGE_TAG}
+                    '''
+                }
+            }
+        }
+
         stage('Push to Artifact Registry') {
             steps {
                 sh '''
