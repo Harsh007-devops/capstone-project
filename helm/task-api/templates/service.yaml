@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-task-api-service
+  labels:
+    app: task-api
+    release: {{ .Release.Name }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: task-api
+    release: {{ .Release.Name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}

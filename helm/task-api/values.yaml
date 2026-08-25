@@ -1,0 +1,29 @@
+replicaCount: 2
+
+image:
+  repository: us-central1-docker.pkg.dev/project-fd904717-6ef9-4872-ad5/capstone-repo/task-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+probes:
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 10
+    periodSeconds: 15
