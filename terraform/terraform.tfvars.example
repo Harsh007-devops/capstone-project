@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars and fill in your real project ID.
+# terraform.tfvars is gitignored - never commit it, it can contain
+# project-specific values you don't want in a public repo.
+
+project_id = "your-gcp-project-id-here"
+region     = "us-central1"
+zone       = "us-central1-a"
+
+# Defaults below are fine to leave as-is for the capstone
+cluster_name       = "capstone-gke"
+environment        = "capstone"
+node_machine_type  = "e2-medium"
+node_count         = 1
+min_node_count     = 1
+max_node_count     = 3
