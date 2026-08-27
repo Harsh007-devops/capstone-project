@@ -1,6 +1,6 @@
 Phase 7, Task 15: Kubernetes Networking Issue - Root Cause Analysis
 
-Issue Description
+Issue Description:
 
 A Deployment (task-api) in the dev namespace was unable to reach external
 services after a NetworkPolicy named deny-all-egress was applied. The pod's
